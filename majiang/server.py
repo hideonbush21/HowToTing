@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from .game import Room
 from .tiles import Tile, tiles_from_str
 from .quiz import QuizSession, create_session, create_session_with_first, generate_remaining
+from .rules import find_structure_for_tile
 
 app = FastAPI(title="麻将")
 
@@ -89,19 +90,30 @@ class NewSessionReq(BaseModel):
 class AnswerReq(BaseModel):
     discard: str
 
-def _opt_dict(opt) -> dict:
+def _structure_dict(s) -> dict | None:
+    if not s:
+        return None
+    return {
+        "melds":     [[str(t) for t in m] for m in s.melds],
+        "pair":      [str(t) for t in s.pair] if s.pair else None,
+        "wait_part": [str(t) for t in s.wait_part],
+        "wait_type": s.wait_type,
+    }
+
+
+def _opt_dict(opt, hand_13: list[Tile] | None = None) -> dict:
     d = {
         "discard":      str(opt.discard),
         "tenpai_tiles": [str(t) for t in opt.tenpai_tiles],
         "tenpai_count": opt.tenpai_count,
     }
     if opt.structure:
-        s = opt.structure
-        d["structure"] = {
-            "melds":     [[str(t) for t in m] for m in s.melds],
-            "pair":      [str(t) for t in s.pair] if s.pair else None,
-            "wait_part": [str(t) for t in s.wait_part],
-            "wait_type": s.wait_type,
+        d["structure"] = _structure_dict(opt.structure)
+    # 每张听牌的独立牌谱（前端用于逐牌说明）
+    if hand_13 is not None:
+        d["tile_structures"] = {
+            str(t): _structure_dict(find_structure_for_tile(hand_13, t))
+            for t in opt.tenpai_tiles
         }
     return d
 
@@ -208,10 +220,16 @@ def submit_answer(sid: str, req: AnswerReq):
     _sessions[new_sid] = sess
     _sessions.pop(sid, None)
 
+    # 每个打法选项的 13 张剩余手牌（用于计算每张听牌的独立牌谱）
+    def _hand13(opt_discard: Tile) -> list[Tile]:
+        h = list(q.hand)
+        h.remove(opt_discard)
+        return h
+
     return {
         "correct":      result.correct,
-        "your_choice":  _opt_dict(result.your_choice),
-        "best_options": [_opt_dict(o) for o in result.best_options],
+        "your_choice":  _opt_dict(result.your_choice,  _hand13(result.your_choice.discard)),
+        "best_options": [_opt_dict(o, _hand13(o.discard)) for o in result.best_options],
         "max_tenpai":   result.max_tenpai,
         "next_session_id": new_sid,
         "session_progress": {

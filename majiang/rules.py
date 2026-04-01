@@ -265,6 +265,87 @@ def _can_form_melds(counts: Counter) -> bool:
     return False
 
 
+def _can_form_one_meld(tiles: list[Tile]) -> bool:
+    """判断恰好 3 张牌是否构成刻子或顺子。"""
+    if len(tiles) != 3:
+        return False
+    if tiles[0] == tiles[1] == tiles[2]:
+        return True
+    suits = {t.suit for t in tiles}
+    if len(suits) != 1 or next(iter(suits)) not in SICHUAN_SUITS:
+        return False
+    vals = sorted(t.value for t in tiles)
+    return vals[0] + 1 == vals[1] and vals[1] + 1 == vals[2]
+
+
+def find_structure_for_tile(hand: list[Tile], wait_tile: Tile) -> TenpaiStructure | None:
+    """
+    针对指定听牌 wait_tile，返回能解释「为什么这张牌能胡」的 TenpaiStructure。
+    与 find_tenpai_structure 的区别：强制 wait_tile 出现在 wait_part 中，
+    因此对于双碰/多解构等牌型，每张听牌会得到各自独立的说明。
+    """
+    if len(hand) != 13:
+        return None
+    counts = Counter(hand)
+    key = lambda t: (t.suit.value, t.value)
+
+    # ── 七对 ──
+    singles = [t for t in counts if counts[t] % 2 == 1]
+    evens   = [t for t in counts if counts[t] % 2 == 0 and counts[t] >= 2]
+    if len(singles) == 1 and singles[0] == wait_tile and len(evens) == 6:
+        return TenpaiStructure(
+            melds=tuple(tuple([t, t]) for t in sorted(evens, key=key)),
+            pair=None,
+            wait_part=(wait_tile,),
+            wait_type='七对',
+        )
+
+    # ── 标准型：枚举雀头 → wait_part 必须含 wait_tile 且加上 wait_tile 能成面子 ──
+    for pair_tile in sorted(set(hand), key=key):
+        if counts[pair_tile] < 2:
+            continue
+        remaining = list(hand)
+        remaining.remove(pair_tile)
+        remaining.remove(pair_tile)  # 剩余 11 张
+
+        seen_wp: set = set()
+        for i in range(len(remaining)):
+            for j in range(i + 1, len(remaining)):
+                wp = tuple(sorted([remaining[i], remaining[j]], key=key))
+                if wp in seen_wp:
+                    continue
+                seen_wp.add(wp)
+                if wait_tile not in wp:
+                    continue
+                # wait_part + wait_tile 必须构成一个面子
+                if not _can_form_one_meld(sorted(list(wp) + [wait_tile])):
+                    continue
+                meld9 = [remaining[k] for k in range(len(remaining)) if k != i and k != j]
+                collected: list = []
+                if _extract_all_as_melds(Counter(meld9), collected):
+                    return TenpaiStructure(
+                        melds=tuple(tuple(m) for m in collected),
+                        pair=(pair_tile, pair_tile),
+                        wait_part=wp,
+                        wait_type=_classify_wait(list(wp)),
+                    )
+
+    # ── 单钓：wait_tile 本身是孤张 ──
+    if wait_tile in hand:
+        meld12 = list(hand)
+        meld12.remove(wait_tile)
+        collected = []
+        if _extract_all_as_melds(Counter(meld12), collected):
+            return TenpaiStructure(
+                melds=tuple(tuple(m) for m in collected),
+                pair=None,
+                wait_part=(wait_tile,),
+                wait_type='单钓',
+            )
+
+    return None
+
+
 # ── 多人对战兼容 ─────────────────────────────────────────────
 
 def possible_actions(hand: list[Tile], discard: Tile, player_wind: int, round_wind: int) -> dict:

@@ -320,7 +320,30 @@ body::after {
   flex-shrink: 0;
 }
 
-/* Wait group highlight */
+/* 可点击听牌（左栏） */
+.wait-selectable {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px;
+  transition: background .12s;
+}
+.wait-selectable:hover {
+  background: rgba(255,255,255,.06);
+}
+.wait-selectable.active-wait .tile-chip {
+  box-shadow:
+    0 2px 0 rgba(0,0,0,.4),
+    0 3px 8px rgba(0,0,0,.35),
+    0 0 0 2px var(--gold);
+}
+.wait-selectable.active-wait .tile-chip::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: rgba(201,160,70,.12);
+  pointer-events: none;
+}
+
+
 .struct-group.wait-group .tile-chip {
   box-shadow:
     0 2px 0 rgba(0,0,0,.4),
@@ -832,18 +855,32 @@ function renderAnalysis(data) {
   const { correct, your_choice, best_options, max_tenpai } = data;
   const yc = your_choice;
 
-  /* ── Left panel: wait-tiles + structure for a given option ── */
+  /* ── Left panel: wait-tiles + per-tile structure ── */
+  let _tileStructures = {};   // 当前选中打法的 tile_structures
+
   function leftHtml(opt) {
     if (opt.tenpai_count === 0) {
       return `<p class="no-tenpai">打出此牌后无法听牌</p>`;
     }
+    _tileStructures = opt.tile_structures || {};
+    const firstTile = opt.tenpai_tiles[0];
+    const chipsHtml = opt.tenpai_tiles.map((t, i) =>
+      `<span class="wait-selectable${i === 0 ? ' active-wait' : ''}" data-wait="${t}"
+             onclick="selectWaitTile('${t}')">${chipHtml(t)}</span>`
+    ).join('');
     return `
-      <div class="tile-chips">
-        ${opt.tenpai_tiles.map(t => chipHtml(t)).join('')}
-      </div>
+      <div class="tile-chips">${chipsHtml}</div>
       <div class="chips-count"><span class="n">${opt.tenpai_count}</span> 种可胡</div>
-      ${structureHtml(opt.structure || null)}`;
+      <div id="waitStructure">${structureHtml(_tileStructures[firstTile] || null)}</div>`;
   }
+
+  window.selectWaitTile = function(tileStr) {
+    document.querySelectorAll('.wait-selectable').forEach(el =>
+      el.classList.toggle('active-wait', el.dataset.wait === tileStr)
+    );
+    const el = document.getElementById('waitStructure');
+    if (el) el.innerHTML = structureHtml(_tileStructures[tileStr] || null);
+  };
 
   /* ── Right panel: best-option rows ── */
   const notOptimalNote = !correct ? `
