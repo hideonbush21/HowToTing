@@ -38,6 +38,7 @@ class AnswerResult:
 @dataclass
 class QuizSession:
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+    seed: int = 0
     questions: list[QuizHand] = field(default_factory=list)
     total_expected: int = 10       # 预期总题数（后台生成未完成时也对外声明）
     current_index: int = 0

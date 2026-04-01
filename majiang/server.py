@@ -5,11 +5,16 @@ FastAPI 服务入口
 """
 from __future__ import annotations
 import asyncio
+import hashlib
+import hmac
 import json
+import os
+import random
 import uuid
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent
+_SESSION_SECRET = os.environ.get("SESSION_SECRET", "majiang-quiz-secret").encode()
 
 from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -18,13 +23,60 @@ from pydantic import BaseModel
 
 from .game import Room
 from .tiles import Tile, tiles_from_str
-from .quiz import QuizSession, create_session_with_first, generate_remaining
+from .quiz import QuizSession, create_session, create_session_with_first, generate_remaining
 
 app = FastAPI(title="麻将")
 
 _sessions: dict[str, QuizSession] = {}
 _rooms: dict[str, Room] = {}
 _connections: dict[str, dict[str, WebSocket]] = {}
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Session token：seed.index.answered.correct.sig8
+#  任意实例均可从 token 重建 session，无需共享内存。
+# ═══════════════════════════════════════════════════════════════
+
+def _make_sid(seed: int, index: int, answered: int, correct: int) -> str:
+    payload = f"{seed}.{index}.{answered}.{correct}"
+    sig = hmac.new(_SESSION_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:8]
+    return f"{payload}.{sig}"
+
+
+def _parse_sid(sid: str) -> tuple[int, int, int, int] | None:
+    """解码 token，签名不合法返回 None。"""
+    parts = sid.rsplit(".", 1)
+    if len(parts) != 2:
+        return None
+    payload, sig = parts
+    expected = hmac.new(_SESSION_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:8]
+    if not hmac.compare_digest(sig, expected):
+        return None
+    sub = payload.split(".")
+    if len(sub) != 4:
+        return None
+    try:
+        return int(sub[0]), int(sub[1]), int(sub[2]), int(sub[3])
+    except ValueError:
+        return None
+
+
+def _get_or_reconstruct(sid: str) -> QuizSession:
+    """优先从内存取；冷启动时从 token 重建。"""
+    if sid in _sessions:
+        return _sessions[sid]
+    parsed = _parse_sid(sid)
+    if parsed is None:
+        raise HTTPException(404, {"error": "SESSION_NOT_FOUND", "message": "会话不存在或已过期"})
+    seed, index, answered, correct = parsed
+    sess = create_session(seed=seed)          # 同步生成全部 10 题（确定性）
+    sess.seed = seed
+    sess.session_id = sid
+    sess.current_index = index
+    sess.answered = answered
+    sess.correct_count = correct
+    _sessions[sid] = sess
+    return sess
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -36,12 +88,6 @@ class NewSessionReq(BaseModel):
 
 class AnswerReq(BaseModel):
     discard: str
-
-
-def _session_or_404(sid: str) -> QuizSession:
-    if sid not in _sessions:
-        raise HTTPException(404, {"error": "SESSION_NOT_FOUND", "message": "会话不存在或已过期"})
-    return _sessions[sid]
 
 def _opt_dict(opt) -> dict:
     d = {
@@ -64,11 +110,15 @@ def _opt_dict(opt) -> dict:
 async def new_session(req: NewSessionReq = NewSessionReq(),
                       background_tasks: BackgroundTasks = BackgroundTasks()):
     """
-    立即返回第 1 题（内嵌在响应中），后台异步生成剩余 9 题。
-    前端无需再请求 /current 即可渲染首题，减少一次 RTT。
+    立即返回第 1 题。session_id 是携带状态的签名 token，
+    冷启动时可从 token 重建 session，无需外部存储。
     """
-    sess, rng = create_session_with_first(seed=req.seed, total=10)
-    _sessions[sess.session_id] = sess
+    seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
+    sess, rng = create_session_with_first(seed=seed, total=10)
+    sess.seed = seed
+    sid = _make_sid(seed, 0, 0, 0)
+    sess.session_id = sid
+    _sessions[sid] = sess
 
     # 后台生成剩余 9 题（CPU 密集 → to_thread 避免阻塞事件循环）
     async def _fill():
@@ -78,7 +128,7 @@ async def new_session(req: NewSessionReq = NewSessionReq(),
 
     first_q = sess.questions[0]
     return {
-        "session_id":    sess.session_id,
+        "session_id":    sid,
         "total_expected": sess.total_expected,
         "current_index": 0,
         "first_question": {
@@ -91,7 +141,7 @@ async def new_session(req: NewSessionReq = NewSessionReq(),
 
 @app.get("/quiz/sessions/{sid}")
 def session_status(sid: str):
-    sess = _session_or_404(sid)
+    sess = _get_or_reconstruct(sid)
     with sess._lock:
         return {
             "session_id":      sess.session_id,
@@ -106,7 +156,7 @@ def session_status(sid: str):
 
 @app.get("/quiz/sessions/{sid}/current")
 def current_question(sid: str):
-    sess = _session_or_404(sid)
+    sess = _get_or_reconstruct(sid)
     if sess.generation_error:
         raise HTTPException(500, {"error": "GENERATION_FAILED",
                                    "message": sess.generation_error})
@@ -128,7 +178,7 @@ def current_question(sid: str):
 
 @app.post("/quiz/sessions/{sid}/answer")
 def submit_answer(sid: str, req: AnswerReq):
-    sess = _session_or_404(sid)
+    sess = _get_or_reconstruct(sid)
     if sess.finished:
         raise HTTPException(400, {"error": "SESSION_FINISHED",
                                    "message": "该会话已完成全部题目"})
@@ -151,11 +201,19 @@ def submit_answer(sid: str, req: AnswerReq):
                                    "message": f"{req.discard} 不在当前手牌中"})
 
     result = sess.submit_answer(discard_tile)
+
+    # 更新 session_id（携带最新状态），前端需用新 id 发起后续请求
+    new_sid = _make_sid(sess.seed, sess.current_index, sess.answered, sess.correct_count)
+    sess.session_id = new_sid
+    _sessions[new_sid] = sess
+    _sessions.pop(sid, None)
+
     return {
         "correct":      result.correct,
         "your_choice":  _opt_dict(result.your_choice),
         "best_options": [_opt_dict(o) for o in result.best_options],
         "max_tenpai":   result.max_tenpai,
+        "next_session_id": new_sid,
         "session_progress": {
             "answered": sess.answered,
             "correct":  sess.correct_count,

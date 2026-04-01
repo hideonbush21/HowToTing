@@ -798,6 +798,7 @@ async function onTileClick(str, el) {
 
   try {
     const data = await post(`/quiz/sessions/${S.sid}/answer`, { discard: str });
+    if (data.next_session_id) S.sid = data.next_session_id;
     S.answered++;
     if (data.correct) S.correct++;
     renderAnalysis(data);
