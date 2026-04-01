@@ -7,6 +7,9 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent.parent
 
 from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -262,9 +265,9 @@ async def _broadcast(room_id: str, payload: dict) -> None:
 
 # ── 静态文件 ─────────────────────────────────────────────────
 
-app.mount("/static", StaticFiles(directory="frontend/dist"), name="static")
-app.mount("/tiles", StaticFiles(directory="麻将素材"), name="tiles")
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "frontend" / "dist")), name="static")
+app.mount("/tiles", StaticFiles(directory=str(BASE_DIR / "麻将素材")), name="tiles")
 
 @app.get("/")
 def index():
-    return FileResponse("frontend/dist/index.html")
+    return FileResponse(str(BASE_DIR / "frontend" / "dist" / "index.html"))
