@@ -41,11 +41,20 @@ def _session_or_404(sid: str) -> QuizSession:
     return _sessions[sid]
 
 def _opt_dict(opt) -> dict:
-    return {
+    d = {
         "discard":      str(opt.discard),
         "tenpai_tiles": [str(t) for t in opt.tenpai_tiles],
         "tenpai_count": opt.tenpai_count,
     }
+    if opt.structure:
+        s = opt.structure
+        d["structure"] = {
+            "melds":     [[str(t) for t in m] for m in s.melds],
+            "pair":      [str(t) for t in s.pair] if s.pair else None,
+            "wait_part": [str(t) for t in s.wait_part],
+            "wait_type": s.wait_type,
+        }
+    return d
 
 
 @app.post("/quiz/sessions")
@@ -254,6 +263,7 @@ async def _broadcast(room_id: str, payload: dict) -> None:
 # ── 静态文件 ─────────────────────────────────────────────────
 
 app.mount("/static", StaticFiles(directory="frontend/dist"), name="static")
+app.mount("/tiles", StaticFiles(directory="麻将素材"), name="tiles")
 
 @app.get("/")
 def index():

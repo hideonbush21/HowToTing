@@ -10,11 +10,21 @@ SICHUAN_SUITS = (Suit.WAN, Suit.TIAO, Suit.BING)
 
 
 @dataclass(frozen=True)
+class TenpaiStructure:
+    """13 张听牌手牌的分解结构。"""
+    melds:     tuple[tuple[Tile, ...], ...]   # 完整面子（顺子/刻子）
+    pair:      tuple[Tile, Tile] | None        # 雀头；七对/单钓时为 None
+    wait_part: tuple[Tile, ...]                # 未完成部分（1-2 张）
+    wait_type: str                             # 两面/嵌张/边张/单钓/双碰/七对
+
+
+@dataclass(frozen=True)
 class DiscardOption:
     """打出一张牌后的听牌分析结果。"""
-    discard: Tile
+    discard:    Tile
     tenpai_tiles: tuple[Tile, ...]
     tenpai_count: int
+    structure:  TenpaiStructure | None = None
 
 
 # ── 核心判断 ─────────────────────────────────────────────────
@@ -86,12 +96,128 @@ def best_discards(hand: list[Tile], *, require_que_yi_men: bool = True) -> list[
                 discard=tile,
                 tenpai_tiles=tuple(waits),
                 tenpai_count=len(waits),
+                structure=find_tenpai_structure(remaining),
             ))
     options.sort(key=lambda o: o.tenpai_count, reverse=True)
     return options
 
 
-# ── 内部实现 ─────────────────────────────────────────────────
+# ── 听牌结构分解 ──────────────────────────────────────────────
+
+def _extract_all_as_melds(counts: Counter, collected: list) -> bool:
+    """
+    尝试将 counts 中所有牌组成面子，将面子追加到 collected。
+    就地修改 counts，调用者需传入副本。
+    """
+    if not counts:
+        return True
+    tile = min(counts)
+
+    if counts[tile] >= 3:
+        counts[tile] -= 3
+        if counts[tile] == 0:
+            del counts[tile]
+        collected.append((tile, tile, tile))
+        if _extract_all_as_melds(counts, collected):
+            return True
+        collected.pop()
+        counts[tile] = counts.get(tile, 0) + 3
+
+    if tile.suit in SICHUAN_SUITS and tile.value <= 7:
+        t2 = Tile(tile.suit, tile.value + 1)
+        t3 = Tile(tile.suit, tile.value + 2)
+        if counts.get(t2, 0) >= 1 and counts.get(t3, 0) >= 1:
+            for t in (tile, t2, t3):
+                counts[t] -= 1
+                if counts[t] == 0:
+                    del counts[t]
+            collected.append((tile, t2, t3))
+            if _extract_all_as_melds(counts, collected):
+                return True
+            collected.pop()
+            for t in (tile, t2, t3):
+                counts[t] = counts.get(t, 0) + 1
+
+    return False
+
+
+def _classify_wait(wp: list[Tile]) -> str:
+    """根据未完成部分判断听牌形式。"""
+    if len(wp) == 1:
+        return '单钓'
+    a, b = sorted(wp, key=lambda t: (t.suit.value, t.value))
+    if a.suit != b.suit or a == b:
+        return '双碰'
+    diff = b.value - a.value
+    if diff == 1:
+        return '边张' if a.value == 1 or b.value == 9 else '两面'
+    if diff == 2:
+        return '嵌张'
+    return '双碰'
+
+
+def find_tenpai_structure(hand: list[Tile]) -> TenpaiStructure | None:
+    """
+    对 13 张听牌手牌进行分解，返回 TenpaiStructure。
+    涵盖：标准型（3 面子 + 雀头 + 等待）、单钓（4 面子 + 单张）、七对。
+    """
+    if len(hand) != 13:
+        return None
+    counts = Counter(hand)
+
+    # ── 七对 ──
+    singles = [t for t in counts if counts[t] % 2 == 1]
+    pairs   = [t for t in counts if counts[t] >= 2]
+    if len(singles) == 1 and sum(1 for t in counts if counts[t] >= 2) == 6:
+        pair_tiles = sorted(pairs, key=lambda t: (t.suit.value, t.value))
+        return TenpaiStructure(
+            melds=tuple(tuple([t, t]) for t in pair_tiles),
+            pair=None,
+            wait_part=(singles[0],),
+            wait_type='七对',
+        )
+
+    # ── 标准型：枚举雀头，再枚举 wait_part ──
+    key = lambda t: (t.suit.value, t.value)
+    for pair_tile in sorted(set(hand), key=key):
+        if counts[pair_tile] < 2:
+            continue
+        remaining = list(hand)
+        remaining.remove(pair_tile)
+        remaining.remove(pair_tile)   # 剩余 11 张
+
+        seen_wp: set = set()
+        for i in range(len(remaining)):
+            for j in range(i + 1, len(remaining)):
+                wp = tuple(sorted([remaining[i], remaining[j]], key=key))
+                if wp in seen_wp:
+                    continue
+                seen_wp.add(wp)
+
+                meld9 = [remaining[k] for k in range(len(remaining)) if k != i and k != j]
+                collected: list = []
+                if _extract_all_as_melds(Counter(meld9), collected):
+                    return TenpaiStructure(
+                        melds=tuple(tuple(m) for m in collected),
+                        pair=(pair_tile, pair_tile),
+                        wait_part=wp,
+                        wait_type=_classify_wait(list(wp)),
+                    )
+
+    # ── 单钓：4 面子 + 1 张 ──
+    for tanki in sorted(set(hand), key=key):
+        meld12 = list(hand)
+        meld12.remove(tanki)
+        collected = []
+        if _extract_all_as_melds(Counter(meld12), collected):
+            return TenpaiStructure(
+                melds=tuple(tuple(m) for m in collected),
+                pair=None,
+                wait_part=(tanki,),
+                wait_type='单钓',
+            )
+
+    return None
 
 def _is_seven_pairs(counts: Counter) -> bool:
     return len(counts) == 7 and all(v == 2 for v in counts.values())

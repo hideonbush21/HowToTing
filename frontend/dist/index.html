@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四川麻将 · 听牌练习</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ─── Variables ─────────────────────────────────────────────── */
+:root {
+  --bg:          #080b0f;
+  --bg2:         #0f1318;
+  --bg3:         #161c24;
+  --tile-border: #b09060;
+  --tile-shadow: rgba(0,0,0,.6);
+
+  --gold:   #c9a046;
+  --gold2:  #e8c56a;
+  --jade:   #3fb076;
+  --red:    #c93838;
+
+  --t1:     #e8dfc8;
+  --t2:     #8a8272;
+  --t3:     #3d3a34;
+
+  --tw: 64px;
+  --th: 90px;
+}
+
+/* ─── Reset & Base ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--t1);
+  font-family: 'Noto Sans SC', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Atmospheric bg layers */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 15% 85%, rgba(201,160,70,.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 85% 15%, rgba(63,176,118,.05) 0%, transparent 60%),
+    radial-gradient(ellipse 100% 60% at 50% 110%, rgba(28,62,130,.08) 0%, transparent 60%);
+}
+
+/* Subtle grid texture */
+body::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: linear-gradient(rgba(255,255,255,.012) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse 100% 100% at 50% 50%, black 30%, transparent 80%);
+}
+
+/* ─── Header ────────────────────────────────────────────────── */
+.header {
+  width: 100%; max-width: 1100px;
+  padding: 22px 40px;
+  display: flex; justify-content: space-between; align-items: center;
+  position: relative; z-index: 10;
+  border-bottom: 1px solid rgba(201,160,70,.12);
+}
+
+.logo {
+  display: flex; align-items: baseline; gap: 10px;
+}
+
+.logo-main {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 20px; font-weight: 900;
+  letter-spacing: .2em;
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold2) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.logo-sub {
+  font-size: 12px; color: var(--t2); letter-spacing: .15em; font-weight: 300;
+}
+
+.hud {
+  display: flex; align-items: center; gap: 20px;
+}
+
+.hud-q {
+  font-size: 13px; color: var(--t2); letter-spacing: .05em;
+}
+
+.hud-score {
+  padding: 5px 16px;
+  border: 1px solid rgba(201,160,70,.25);
+  border-radius: 20px;
+  font-size: 13px; color: var(--gold);
+  background: rgba(201,160,70,.06);
+  font-family: 'Noto Serif SC', serif;
+}
+
+/* ─── Main ──────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 48px 24px 60px;
+  position: relative; z-index: 1;
+  width: 100%; max-width: 1100px;
+}
+
+.instruction {
+  font-size: 13px; color: var(--t2);
+  letter-spacing: .15em; margin-bottom: 44px; text-align: center;
+}
+
+/* ─── Tile Row ──────────────────────────────────────────────── */
+.tiles-row {
+  display: flex; gap: 6px;
+  justify-content: center;
+  perspective: 1000px;
+  flex-wrap: wrap;
+  padding: 16px 0 40px;
+}
+
+/* ─── Tile ──────────────────────────────────────────────────── */
+.tile {
+  width: var(--tw); height: var(--th);
+  position: relative;
+  cursor: pointer;
+  animation: tileRise .4s cubic-bezier(.34,1.4,.64,1) both;
+  transform-origin: bottom center;
+}
+
+/* Shadow base under each tile */
+.tile::after {
+  content: '';
+  position: absolute;
+  bottom: -4px; left: 5%; width: 90%; height: 8px;
+  background: radial-gradient(ellipse, rgba(0,0,0,.5) 0%, transparent 70%);
+  filter: blur(3px);
+  transition: opacity .22s ease, transform .22s ease;
+  pointer-events: none;
+}
+
+.tile:hover::after {
+  opacity: .6;
+  transform: scaleX(.8) translateY(6px);
+}
+
+.tile.selected::after {
+  opacity: .7;
+  transform: scaleX(.75) translateY(8px);
+}
+
+.tile.dimmed::after { opacity: .2; }
+
+/* The tile face — wraps the image */
+.tile-face {
+  width: 100%; height: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  border: 1.5px solid var(--tile-border);
+  box-shadow:
+    0 3px 0 rgba(0,0,0,.5),
+    0 6px 18px rgba(0,0,0,.5),
+    inset 0 1px 0 rgba(255,255,255,.45);
+  transition:
+    transform .22s cubic-bezier(.34,1.56,.64,1),
+    box-shadow .22s ease;
+  will-change: transform;
+}
+
+/* Inner-top shine strip */
+.tile-face::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 7px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,.22) 0%,
+    rgba(255,255,255,.0)  30%
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Tile image */
+.tile-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Hover */
+.tile:hover .tile-face {
+  transform: translateY(-16px) scale(1.08) rotateX(-4deg);
+  box-shadow:
+    0 3px 0 rgba(0,0,0,.4),
+    0 28px 48px rgba(0,0,0,.6),
+    0 8px 18px rgba(0,0,0,.35),
+    inset 0 1px 0 rgba(255,255,255,.5);
+  z-index: 20;
+}
+
+/* Selected */
+.tile.selected .tile-face {
+  transform: translateY(-20px) scale(1.1) rotateX(-4deg);
+  border-color: var(--red);
+  box-shadow:
+    0 3px 0 rgba(0,0,0,.3),
+    0 32px 56px rgba(201,56,56,.3),
+    0 0 0 2px var(--red),
+    0 12px 28px rgba(0,0,0,.5),
+    inset 0 1px 0 rgba(255,255,255,.5);
+  z-index: 30;
+}
+
+/* Selected glow ring */
+.tile.selected .tile-face::after {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 7px;
+  box-shadow: inset 0 0 12px rgba(201,56,56,.35);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Dimmed */
+.tile.dimmed .tile-face {
+  transform: translateY(0) scale(1);
+  opacity: .38;
+  cursor: default;
+  filter: grayscale(.4);
+}
+
+/* ─── Mini tile chip (analysis panel) ───────────────────────── */
+.tile-chips {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px;
+}
+
+.tile-chip {
+  width: 30px; height: 42px;
+  border-radius: 5px;
+  overflow: hidden;
+  display: inline-block;
+  box-shadow:
+    0 2px 0 rgba(0,0,0,.4),
+    0 3px 8px rgba(0,0,0,.35),
+    inset 0 1px 0 rgba(255,255,255,.4);
+  border: 1px solid rgba(176,144,96,.6);
+  transition: transform .14s ease;
+  flex-shrink: 0;
+  cursor: default;
+  position: relative;
+}
+
+.tile-chip::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,.18) 0%, transparent 35%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tile-chip:hover { transform: translateY(-3px) scale(1.1); }
+
+.tile-chip img {
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+
+.chips-count {
+  font-size: 12px; color: var(--t2);
+  margin-top: 2px;
+}
+
+.chips-count .n {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 26px; font-weight: 900;
+  color: var(--gold); margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* ─── Hand Structure (分组展示) ─────────────────────────────── */
+.struct-wrap {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.05);
+}
+
+.struct-row {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
+}
+
+.struct-group {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+
+.struct-tiles {
+  display: flex; gap: 2px; align-items: flex-end;
+}
+
+.struct-label {
+  font-size: 9px; letter-spacing: .06em;
+  color: var(--t3); font-family: 'Noto Serif SC', serif;
+  text-align: center;
+}
+
+.struct-sep {
+  width: 1px; height: 40px; align-self: center;
+  background: rgba(255,255,255,.08);
+  flex-shrink: 0;
+}
+
+/* Wait group highlight */
+.struct-group.wait-group .tile-chip {
+  box-shadow:
+    0 2px 0 rgba(0,0,0,.4),
+    0 3px 8px rgba(0,0,0,.35),
+    0 0 0 1.5px rgba(201,160,70,.6);
+}
+
+.struct-group.wait-group .struct-label {
+  color: var(--gold);
+}
+
+/* Pair group */
+.struct-group.pair-group .struct-label {
+  color: #9090e0;
+}
+
+.struct-group.pair-group .tile-chip {
+  box-shadow:
+    0 2px 0 rgba(0,0,0,.4),
+    0 3px 8px rgba(0,0,0,.35),
+    0 0 0 1.5px rgba(140,140,220,.45);
+}
+
+/* ─── Analysis Panel ────────────────────────────────────────── */
+.panel {
+  width: 100%; max-width: 860px;
+  margin-top: 0;
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity .38s ease, transform .38s cubic-bezier(.2,1,.4,1);
+  pointer-events: none;
+}
+
+.panel.show {
+  opacity: 1; transform: translateY(0); pointer-events: auto;
+}
+
+.panel-inner {
+  background: var(--bg3);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 40px rgba(0,0,0,.4);
+}
+
+/* Verdict header */
+.panel-verdict {
+  padding: 14px 24px;
+  display: flex; align-items: center; gap: 14px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+
+.verdict-tag {
+  padding: 4px 14px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; letter-spacing: .08em;
+  font-family: 'Noto Serif SC', serif;
+  flex-shrink: 0;
+}
+
+.verdict-tag.ok {
+  background: rgba(63,176,118,.13);
+  border: 1px solid rgba(63,176,118,.35);
+  color: var(--jade);
+}
+
+.verdict-tag.bad {
+  background: rgba(201,56,56,.1);
+  border: 1px solid rgba(201,56,56,.3);
+  color: #ff7878;
+}
+
+.verdict-tile {
+  width: 26px; height: 36px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(176,144,96,.5);
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+}
+
+.verdict-tile img {
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+
+.verdict-desc {
+  font-size: 14px; color: var(--t2);
+}
+
+.verdict-desc b { color: var(--t1); }
+
+/* Panel body grid */
+.panel-body {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: rgba(255,255,255,.04);
+}
+
+.panel-col {
+  background: var(--bg3);
+  padding: 20px 24px;
+}
+
+.col-label {
+  font-size: 10px; font-weight: 500;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--t3); margin-bottom: 14px;
+}
+
+/* Best option rows */
+.best-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 8px; margin-bottom: 7px;
+  border: 1px solid rgba(63,176,118,.12);
+  background: rgba(63,176,118,.05);
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+  user-select: none;
+}
+
+.best-row:hover {
+  background: rgba(63,176,118,.1);
+  border-color: rgba(63,176,118,.28);
+}
+
+.best-row.is-you {
+  border-color: rgba(63,176,118,.35);
+  background: rgba(63,176,118,.1);
+}
+
+.best-row.active {
+  border-color: var(--gold);
+  background: rgba(201,160,70,.08);
+  box-shadow: 0 0 0 1px rgba(201,160,70,.2);
+}
+
+.best-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--jade); flex-shrink: 0;
+}
+
+.best-tile-img {
+  width: 26px; height: 36px;
+  border-radius: 4px; overflow: hidden; flex-shrink: 0;
+  border: 1px solid rgba(176,144,96,.45);
+  box-shadow: 0 2px 5px rgba(0,0,0,.3);
+}
+
+.best-tile-img img {
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+
+.best-tile {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 13px; font-weight: 700;
+  color: var(--t2);
+}
+.best-tile.is-you { color: var(--jade); }
+
+.best-count {
+  margin-left: auto; font-size: 12px; color: var(--t2);
+  flex-shrink: 0;
+}
+
+.best-count b { color: var(--jade); }
+
+.best-you-label {
+  font-size: 11px; color: var(--jade);
+  padding: 2px 8px; border-radius: 10px;
+  background: rgba(63,176,118,.15);
+  white-space: nowrap;
+}
+
+/* No tenpai note */
+.no-tenpai {
+  font-size: 13px; color: var(--t3); font-style: italic;
+  padding: 8px 0;
+}
+
+/* ─── Actions ───────────────────────────────────────────────── */
+.actions {
+  margin-top: 28px;
+  display: flex; gap: 10px; justify-content: center;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity .3s ease .15s, transform .3s ease .15s;
+  pointer-events: none;
+}
+
+.actions.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+.btn {
+  padding: 11px 30px; border-radius: 7px;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 13px; letter-spacing: .1em;
+  cursor: pointer; border: none; transition: all .2s ease;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(201,160,70,.3);
+  color: var(--gold);
+}
+
+.btn-ghost:hover { background: rgba(201,160,70,.08); }
+
+.btn-solid {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold2) 100%);
+  color: var(--bg);
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(201,160,70,.25);
+}
+
+.btn-solid:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(201,160,70,.35); }
+
+/* ─── Loading ───────────────────────────────────────────────── */
+.loading-wrap {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 16px;
+  color: var(--t2); padding: 80px 0;
+}
+
+.spinner {
+  width: 36px; height: 36px;
+  border: 2px solid rgba(201,160,70,.15);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+/* ─── Session Complete ──────────────────────────────────────── */
+.complete {
+  text-align: center; padding: 64px 32px;
+}
+
+.complete-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 14px; letter-spacing: .25em; color: var(--t2);
+  margin-bottom: 20px;
+}
+
+.complete-big {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 72px; font-weight: 900;
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold2) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1;
+}
+
+.complete-denom {
+  font-size: 20px; color: var(--t2);
+  font-family: 'Noto Serif SC', serif;
+  margin-top: 4px; margin-bottom: 12px;
+}
+
+.complete-grade {
+  font-size: 16px; color: var(--t1);
+  margin-bottom: 6px;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.complete-pct {
+  font-size: 13px; color: var(--t2); margin-bottom: 36px;
+}
+
+/* ─── Error ─────────────────────────────────────────────────── */
+.err-wrap {
+  text-align: center; padding: 60px 24px; color: var(--t2);
+}
+
+.err-wrap p { margin-bottom: 8px; }
+.err-wrap small { font-size: 11px; opacity: .5; }
+
+/* ─── Keyframes ─────────────────────────────────────────────── */
+@keyframes tileRise {
+  from { opacity: 0; transform: translateY(32px) rotateX(20deg) scale(.92); }
+  to   { opacity: 1; transform: translateY(0)    rotateX(0deg)  scale(1);   }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Responsive ────────────────────────────────────────────── */
+@media (max-width: 680px) {
+  :root { --tw: 48px; --th: 67px; }
+  .header { padding: 16px 20px; }
+  .panel-body { grid-template-columns: 1fr; }
+  .main { padding: 32px 16px 48px; }
+  .tile-chip { width: 24px; height: 34px; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <span class="logo-main">四川麻将</span>
+    <span class="logo-sub">听牌练习</span>
+  </div>
+  <div class="hud">
+    <span class="hud-q" id="hudQ">加载中…</span>
+    <span class="hud-score" id="hudScore">0 / 0</span>
+  </div>
+</header>
+
+<main class="main" id="app"></main>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   Config & State
+═══════════════════════════════════════════════════════════════ */
+const API = '';   // empty = same origin; set to 'http://localhost:8000' for dev
+
+const S = {
+  sid: null,
+  total: 10,
+  idx: 0,
+  answered: 0,
+  correct: 0,
+  hand: [],
+  locked: false,
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   Tile helpers
+═══════════════════════════════════════════════════════════════ */
+const NUM_CN = ['一','二','三','四','五','六','七','八','九'];
+
+/** "3万" → "/tiles/三万.png" */
+function tileImgUrl(str) {
+  const num  = +str[0];
+  const suit = str[1]; // 万 条 饼
+  const cn   = NUM_CN[num - 1];
+  return `/tiles/${cn}${suit}.png`;
+}
+
+function tileImgTag(str, cls = '') {
+  return `<img src="${tileImgUrl(str)}" alt="${str}" loading="lazy"${cls ? ` class="${cls}"` : ''}>`;
+}
+
+function chipHtml(tileStr) {
+  return `<div class="tile-chip" title="${tileStr}">${tileImgTag(tileStr)}</div>`;
+}
+
+function getMeldType(tiles) {
+  if (tiles.length === 2) return '雀头';
+  return tiles[0] === tiles[1] && tiles[1] === tiles[2] ? '刻子' : '顺子';
+}
+
+/** Render the hand-structure breakdown below the wait chips */
+function structureHtml(s) {
+  if (!s) return '';
+
+  const meldGroups = s.melds.map(m => `
+    <div class="struct-group">
+      <div class="struct-tiles">${m.map(t => chipHtml(t)).join('')}</div>
+      <div class="struct-label">${getMeldType(m)}</div>
+    </div>`).join('');
+
+  const pairGroup = s.pair ? `
+    <div class="struct-group pair-group">
+      <div class="struct-tiles">${s.pair.map(t => chipHtml(t)).join('')}</div>
+      <div class="struct-label">雀头</div>
+    </div>` : '';
+
+  const waitGroup = `
+    <div class="struct-group wait-group">
+      <div class="struct-tiles">${s.wait_part.map(t => chipHtml(t)).join('')}</div>
+      <div class="struct-label">${s.wait_type}</div>
+    </div>`;
+
+  return `
+    <div class="struct-wrap">
+      <div class="struct-row">
+        ${meldGroups}
+        ${pairGroup ? `<div class="struct-sep"></div>${pairGroup}` : ''}
+        <div class="struct-sep"></div>
+        ${waitGroup}
+      </div>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   API
+═══════════════════════════════════════════════════════════════ */
+async function post(path, body = {}) {
+  const r = await fetch(API + path, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`${r.status} – ${await r.text()}`);
+  return r.json();
+}
+async function get(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) {
+    let detail = {};
+    try { detail = await r.json(); } catch(_) {}
+    const err = new Error(`${r.status} – ${detail.message || JSON.stringify(detail)}`);
+    err.detail = detail;
+    throw err;
+  }
+  return r.json();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Header HUD
+═══════════════════════════════════════════════════════════════ */
+function setHud() {
+  document.getElementById('hudQ').textContent =
+    S.sid ? `第 ${S.idx + 1} / ${S.total} 题` : '—';
+  document.getElementById('hudScore').textContent =
+    `✓ ${S.correct} / ${S.answered}`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Render: Loading
+═══════════════════════════════════════════════════════════════ */
+function renderLoading(msg = '正在生成题目…') {
+  document.getElementById('app').innerHTML = `
+    <div class="loading-wrap">
+      <div class="spinner"></div>
+      <div>${msg}</div>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Render: Question
+═══════════════════════════════════════════════════════════════ */
+function renderQuestion() {
+  const app = document.getElementById('app');
+  setHud();
+
+  app.innerHTML = `
+    <p class="instruction">选择一张打出，使听牌种数最多</p>
+    <div class="tiles-row" id="tilesRow"></div>
+    <div class="panel" id="panel"><div class="panel-inner" id="panelInner"></div></div>
+    <div class="actions" id="actions"></div>
+  `;
+
+  const row = document.getElementById('tilesRow');
+  S.hand.forEach((str, i) => {
+    const el = document.createElement('div');
+    el.className = 'tile';
+    el.style.animationDelay = `${i * 36}ms`;
+    el.dataset.str = str;
+    el.innerHTML = `
+      <div class="tile-face">
+        ${tileImgTag(str, 'tile-img')}
+      </div>`;
+    el.addEventListener('click', () => onTileClick(str, el));
+    row.appendChild(el);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Tile click
+═══════════════════════════════════════════════════════════════ */
+async function onTileClick(str, el) {
+  if (S.locked) return;
+  S.locked = true;
+
+  document.querySelectorAll('.tile').forEach(t => {
+    if (t !== el) t.classList.add('dimmed');
+    else          t.classList.add('selected');
+    t.style.pointerEvents = 'none';
+  });
+
+  const panel = document.getElementById('panel');
+  panel.querySelector('.panel-inner').innerHTML = `
+    <div style="padding:28px;display:flex;justify-content:center">
+      <div class="spinner"></div>
+    </div>`;
+  panel.classList.add('show');
+
+  try {
+    const data = await post(`/quiz/sessions/${S.sid}/answer`, { discard: str });
+    S.answered++;
+    if (data.correct) S.correct++;
+    renderAnalysis(data);
+    setHud();
+    showActions(data.finished);
+  } catch (e) {
+    panel.querySelector('.panel-inner').innerHTML =
+      `<div style="padding:20px;color:#ff7878;font-size:13px">提交失败：${e.message}</div>`;
+    showActions(false);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Render: Analysis
+═══════════════════════════════════════════════════════════════ */
+function renderAnalysis(data) {
+  const { correct, your_choice, best_options, max_tenpai } = data;
+  const yc = your_choice;
+
+  /* ── Left panel: wait-tiles + structure for a given option ── */
+  function leftHtml(opt) {
+    if (opt.tenpai_count === 0) {
+      return `<p class="no-tenpai">打出此牌后无法听牌</p>`;
+    }
+    return `
+      <div class="tile-chips">
+        ${opt.tenpai_tiles.map(t => chipHtml(t)).join('')}
+      </div>
+      <div class="chips-count"><span class="n">${opt.tenpai_count}</span> 种可胡</div>
+      ${structureHtml(opt.structure || null)}`;
+  }
+
+  /* ── Right panel: best-option rows ── */
+  const notOptimalNote = !correct ? `
+    <p style="font-size:11px;color:var(--t3);margin-top:10px;letter-spacing:.04em">
+      你的打法听 ${yc.tenpai_count} 种，最优听 ${max_tenpai} 种
+    </p>` : '';
+
+  const bestHtml = best_options.map((opt, idx) => {
+    const isYou = opt.discard === yc.discard;
+    return `
+      <div class="best-row ${isYou ? 'is-you' : ''}" data-idx="${idx}">
+        <div class="best-dot"></div>
+        <div class="best-tile-img">${tileImgTag(opt.discard)}</div>
+        <div class="best-tile ${isYou ? 'is-you' : ''}">打 ${opt.discard}</div>
+        ${isYou ? '<span class="best-you-label">你的选择</span>' : ''}
+        <div class="best-count">听 <b>${opt.tenpai_count}</b> 种</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('panelInner').innerHTML = `
+    <div class="panel-verdict">
+      <span class="verdict-tag ${correct ? 'ok' : 'bad'}">
+        ${correct ? '✓ 最优选择' : '✗ 非最优打法'}
+      </span>
+      <div class="verdict-tile">${tileImgTag(yc.discard)}</div>
+      <span class="verdict-desc">
+        打出 <b>${yc.discard}</b>，可听 <b>${yc.tenpai_count}</b> 种牌
+      </span>
+    </div>
+    <div class="panel-body">
+      <div class="panel-col" id="leftCol">
+        <div class="col-label" id="leftLabel">打 ${yc.discard} 后可听</div>
+        <div id="leftContent">${leftHtml(yc)}</div>
+      </div>
+      <div class="panel-col">
+        <div class="col-label">最优打法（听 ${max_tenpai} 种）</div>
+        ${bestHtml}
+        ${notOptimalNote}
+      </div>
+    </div>
+  `;
+
+  /* ── Wire up row clicks ── */
+  const rows = document.querySelectorAll('.best-row');
+  // Default active: user's row (or first)
+  const defaultIdx = best_options.findIndex(o => o.discard === yc.discard);
+  if (defaultIdx >= 0) rows[defaultIdx]?.classList.add('active');
+
+  rows.forEach((row, i) => {
+    row.addEventListener('click', () => {
+      rows.forEach(r => r.classList.remove('active'));
+      row.classList.add('active');
+      const opt = best_options[i];
+      document.getElementById('leftLabel').textContent = `打 ${opt.discard} 后可听`;
+      document.getElementById('leftContent').innerHTML = leftHtml(opt);
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Actions bar
+═══════════════════════════════════════════════════════════════ */
+function showActions(isFinished) {
+  const el = document.getElementById('actions');
+  if (isFinished) {
+    el.innerHTML = `<button class="btn btn-solid" onclick="showComplete()">查看结果</button>`;
+  } else {
+    el.innerHTML = `<button class="btn btn-ghost" onclick="nextQuestion()">下一题 →</button>`;
+  }
+  requestAnimationFrame(() => el.classList.add('show'));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Next question (slide transition)
+═══════════════════════════════════════════════════════════════ */
+async function nextQuestion() {
+  const app = document.getElementById('app');
+  app.style.transition = 'opacity .2s ease, transform .2s ease';
+  app.style.opacity = '0';
+  app.style.transform = 'translateX(-18px)';
+  await wait(200);
+  app.style.transition = '';
+  app.style.opacity = '';
+  app.style.transform = '';
+
+  S.locked = false;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      const q = await get(`/quiz/sessions/${S.sid}/current`);
+      S.hand = q.hand;
+      S.idx  = q.index;
+      renderQuestion();
+      return;
+    } catch (e) {
+      const body = e.detail || {};
+      if (body.error === 'QUESTION_NOT_READY' && attempt < 9) {
+        await wait(body.retry_after_ms || 200);
+        continue;
+      }
+      renderError(e.message);
+      return;
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Session complete
+═══════════════════════════════════════════════════════════════ */
+function showComplete() {
+  const pct  = Math.round(S.correct / S.total * 100);
+  const grade =
+    pct >= 90 ? '🎴 麻将高手，出神入化' :
+    pct >= 70 ? '🀄 进阶熟手，继续精进' :
+    pct >= 50 ? '📖 初级入门，多加练习' :
+               '🎲 还需努力，加油！';
+
+  document.getElementById('hudQ').textContent = '练习完成';
+  document.getElementById('app').innerHTML = `
+    <div class="complete">
+      <div class="complete-title">本轮练习完成</div>
+      <div class="complete-big">${S.correct}</div>
+      <div class="complete-denom">/ ${S.total} 题</div>
+      <div class="complete-grade">${grade}</div>
+      <div class="complete-pct">正确率 ${pct}%</div>
+      <button class="btn btn-solid" onclick="init()">再来一轮</button>
+    </div>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Error
+═══════════════════════════════════════════════════════════════ */
+function renderError(msg) {
+  document.getElementById('app').innerHTML = `
+    <div class="err-wrap">
+      <p>无法连接服务器</p>
+      <small>${msg}</small>
+      <br><br>
+      <button class="btn btn-ghost" onclick="init()">重试</button>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Init
+═══════════════════════════════════════════════════════════════ */
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function init() {
+  S.sid = null; S.idx = 0; S.answered = 0; S.correct = 0; S.locked = false;
+  setHud();
+  renderLoading();
+  try {
+    const sess = await post('/quiz/sessions', {});
+    S.sid   = sess.session_id;
+    S.total = sess.total_expected;
+
+    const fq = sess.first_question;
+    S.hand = fq.hand;
+    S.idx  = fq.index;
+    renderQuestion();
+    setHud();
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

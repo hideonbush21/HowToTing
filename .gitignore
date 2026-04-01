@@ -309,3 +309,9 @@ po
 .env.example
 milvus_data/
 law_json_data/
+# ===== 项目特例：前端构建产物和素材 =====
+!frontend/
+!frontend/dist/
+!frontend/dist/index.html
+!麻将素材/
+!麻将素材/*.png
