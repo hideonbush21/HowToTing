@@ -344,6 +344,16 @@ body::after {
     0 0 0 1.5px rgba(140,140,220,.45);
 }
 
+/* 刻子：暖橙红 */
+.struct-group.kotsu-group .struct-label {
+  color: #d9785a;
+}
+
+/* 顺子：冷蓝绿 */
+.struct-group.shuntsu-group .struct-label {
+  color: #5aaa8c;
+}
+
 /* ─── Analysis Panel ────────────────────────────────────────── */
 .panel {
   width: 100%; max-width: 860px;
@@ -674,11 +684,15 @@ function getMeldType(tiles) {
 function structureHtml(s) {
   if (!s) return '';
 
-  const meldGroups = s.melds.map(m => `
-    <div class="struct-group">
+  const meldGroups = s.melds.map(m => {
+    const label = getMeldType(m);
+    const cls   = label === '刻子' ? 'kotsu-group' : 'shuntsu-group';
+    return `
+    <div class="struct-group ${cls}">
       <div class="struct-tiles">${m.map(t => chipHtml(t)).join('')}</div>
-      <div class="struct-label">${getMeldType(m)}</div>
-    </div>`).join('');
+      <div class="struct-label">${label}</div>
+    </div>`;
+  }).join('');
 
   const pairGroup = s.pair ? `
     <div class="struct-group pair-group">
