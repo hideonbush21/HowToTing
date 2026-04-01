@@ -1,21 +1,311 @@
-venv/
-__pycache__/
-*.pyc
-.env
-data/study_abroad.db
-*.egg-info/
-dist/
-build/
-.pytest_cache/
-.mypy_cache/
+# ============================================
+# Python Git Ignore - 完整版
+# 适用于：Django, Flask, FastAPI, 数据科学, 爬虫等
+# ============================================
 
-# IDE
+# ===== Python 核心 =====
+# 字节码和缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyd
+*.pyo
+
+# 分发和打包
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# 安装日志
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 单元测试和覆盖率
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ===== 虚拟环境（必须忽略！）=====
+venv/
+ENV/
+env/
+.env/
+.venv/
+virtualenv/
+env.bak/
+venv.bak/
+
+# ===== IDE 和编辑器 =====
+# PyCharm / IntelliJ
 .idea/
-.vscode/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+# Vim
 *.swp
 *.swo
 *~
+.netrwhist
 
-# OS
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ===== 操作系统文件 =====
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===== 环境变量和敏感信息（绝对不能提交！）=====
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+!.env.template
+*.key
+*.pem
+*.cert
+secrets.json
+credentials.json
+config.ini
+settings.ini
+*.sqlite3
+*.db
+local_settings.py
+
+# ===== Web 框架特定 =====
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+static/
+*.pot
+*.mo
+
+# Flask
+instance/
+.webassets-cache
+flask_session/
+
+# FastAPI
+.pytest_cache/
+
+# ===== 数据科学和机器学习 =====
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+*.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# 数据和模型（大文件）
+*.csv
+*.tsv
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.npy
+*.npz
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.onnx
+*.pb
+*.lite
+*.tflite
+*.mlmodel
+
+# 数据集目录
+data/
+datasets/
+raw_data/
+processed_data/
+models/
+!src/models/
+checkpoints/
+runs/
+wandb/
+mlruns/
+outputs/
+results/
+
+# Matplotlib
+*.pgf
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.raw
+*.ps
+*.eps
+
+# ===== 数据库 =====
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.sql
+*.dump
+
+# Redis
+*.rdb
+*.aof
+dump.rdb
+
+# PostgreSQL / MySQL
+*.pid
+*.sock
+
+# ===== 日志和临时文件 =====
+*.log
+logs/
+log/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.swp
+.cache/
+.pytest_cache/
+
+# ===== 文档构建 =====
+docs/_build/
+site/
+*.rst.txt
+.doctrees
+
+# ===== 容器化和部署 =====
+# Docker
+.dockerignore
+docker-compose.override.yml
+Dockerfile.*
+
+# Kubernetes
+*.kubeconfig
+.kube/
+
+# Serverless
+.serverless/
+.serverless_plugins/
+
+# AWS
+.aws/
+aws.config
+credentials
+
+# ===== 其他工具 =====
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Sphinx
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# PDM
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# Poetry
+po
+
+.claude
+.env.example
+milvus_data/
+law_json_data/
