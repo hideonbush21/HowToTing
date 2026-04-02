@@ -24,6 +24,7 @@ class DiscardOption:
     discard:    Tile
     tenpai_tiles: tuple[Tile, ...]
     tenpai_count: int
+    effective_count: int = 0   # 残局模式：剩余可摸听牌总张数
     structure:  TenpaiStructure | None = None
 
 
@@ -99,6 +100,32 @@ def best_discards(hand: list[Tile], *, require_que_yi_men: bool = True) -> list[
                 structure=find_tenpai_structure(remaining),
             ))
     options.sort(key=lambda o: o.tenpai_count, reverse=True)
+    return options
+
+
+def best_discards_endgame(
+    hand: list[Tile],
+    remaining: dict[str, int],
+    *,
+    require_que_yi_men: bool = True,
+) -> list[DiscardOption]:
+    """
+    残局模式：在 best_discards 基础上计算每种打法的剩余可摸张数
+    (effective_count)，并按此降序排列。
+    remaining: tile_str → 当前牌墙剩余张数
+    """
+    base = best_discards(hand, require_que_yi_men=require_que_yi_men)
+    options = [
+        DiscardOption(
+            discard=opt.discard,
+            tenpai_tiles=opt.tenpai_tiles,
+            tenpai_count=opt.tenpai_count,
+            effective_count=sum(remaining.get(str(t), 0) for t in opt.tenpai_tiles),
+            structure=opt.structure,
+        )
+        for opt in base
+    ]
+    options.sort(key=lambda o: o.effective_count, reverse=True)
     return options
 
 

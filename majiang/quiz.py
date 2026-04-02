@@ -13,7 +13,8 @@ import uuid
 from dataclasses import dataclass, field
 
 from .tiles import Tile, Suit, sichuan_deck
-from .rules import DiscardOption, best_discards
+from .rules import DiscardOption, best_discards, best_discards_endgame
+from .tiles import all_sichuan_tile_types
 
 SICHUAN_SUITS = (Suit.WAN, Suit.TIAO, Suit.BING)
 
@@ -25,6 +26,8 @@ class QuizHand:
     hand: list[Tile]
     options: list[DiscardOption]
     max_tenpai: int
+    remaining_tiles: dict[str, int] | None = None  # 残局模式：听牌的剩余张数
+    max_effective: int = 0                          # 残局模式：最优打法的 effective_count
 
 
 @dataclass
@@ -47,6 +50,7 @@ class QuizSession:
     generation_done: bool = False
     generation_error: str | None = None
     suits_plan: list[int] = field(default_factory=list)  # 每题花色数：1=清一色，2=双色
+    endgame: bool = False                                  # 是否开启残局模式
 
     def __post_init__(self) -> None:
         self._lock = threading.Lock()
@@ -93,8 +97,14 @@ class QuizSession:
         if choice is None:
             choice = DiscardOption(discard=discard, tenpai_tiles=(), tenpai_count=0)
 
-        best = [o for o in q.options if o.tenpai_count == q.max_tenpai]
-        is_correct = choice.tenpai_count == q.max_tenpai
+        if self.endgame and q.remaining_tiles is not None:
+            threshold = q.max_effective
+            best = [o for o in q.options if o.effective_count == threshold]
+            is_correct = choice.effective_count == threshold
+        else:
+            threshold = q.max_tenpai
+            best = [o for o in q.options if o.tenpai_count == threshold]
+            is_correct = choice.tenpai_count == threshold
 
         with self._lock:
             self.answered += 1
@@ -112,6 +122,34 @@ class QuizSession:
 
 # ── 题目生成 ──────────────────────────────────────────────────
 
+def _generate_remaining_tiles(
+    hand: list[Tile],
+    options: list[DiscardOption],
+    rng: random.Random,
+) -> dict[str, int]:
+    """
+    模拟残局牌墙：从每种牌 4 张出发，扣除手牌后，对各打法的听牌随机减少
+    数量（模拟晚局牌墙消耗）。只返回与听牌相关的 key tile 数量。
+    """
+    pool: dict[str, int] = {str(t): 4 for t in all_sichuan_tile_types()}
+    for t in hand:
+        pool[str(t)] = max(0, pool[str(t)] - 1)
+
+    # 收集所有打法的听牌
+    all_waits: set[str] = set()
+    for opt in options:
+        for t in opt.tenpai_tiles:
+            all_waits.add(str(t))
+
+    # 随机消耗，模拟晚局
+    for key in all_waits:
+        current = pool[key]
+        if current > 0:
+            pool[key] = rng.randint(0, current)
+
+    return {k: pool[k] for k in all_waits}
+
+
 def _make_suits_plan(rng: random.Random, n: int = 10, min_single: int = 4) -> list[int]:
     """
     生成 n 道题的花色计划。
@@ -123,10 +161,11 @@ def _make_suits_plan(rng: random.Random, n: int = 10, min_single: int = 4) -> li
     return plan
 
 
-def generate_quiz_hand(rng: random.Random | None = None, n_suits: int = 2) -> QuizHand:
+def generate_quiz_hand(rng: random.Random | None = None, n_suits: int = 2, endgame: bool = False) -> QuizHand:
     """
     从四川麻将中随机抽 14 张，保证至少一种打法可以听牌。
     n_suits=1：清一色（单色牌堆）；n_suits=2：双色牌堆（缺一门）。
+    endgame=True：额外生成残局剩余张数，并以 effective_count 排序打法。
     """
     if rng is None:
         rng = random.Random()
@@ -138,8 +177,22 @@ def generate_quiz_hand(rng: random.Random | None = None, n_suits: int = 2) -> Qu
         rng.shuffle(deck)
         hand = sorted(deck[:14])
         options = best_discards(hand, require_que_yi_men=True)
-        if options:
+        if not options:
+            continue
+
+        if not endgame:
             return QuizHand(hand=hand, options=options, max_tenpai=options[0].tenpai_count)
+
+        remaining = _generate_remaining_tiles(hand, options, rng)
+        eg_options = best_discards_endgame(hand, remaining, require_que_yi_men=True)
+        max_eff = eg_options[0].effective_count if eg_options else 0
+        return QuizHand(
+            hand=hand,
+            options=eg_options,
+            max_tenpai=eg_options[0].tenpai_count,
+            remaining_tiles=remaining,
+            max_effective=max_eff,
+        )
 
 
 # ── 会话工厂 ──────────────────────────────────────────────────
@@ -147,6 +200,7 @@ def generate_quiz_hand(rng: random.Random | None = None, n_suits: int = 2) -> Qu
 def create_session_with_first(
     seed: int | None = None,
     total: int = 10,
+    endgame: bool = False,
 ) -> tuple[QuizSession, random.Random]:
     """
     仅生成第 1 题，返回 (session, rng)。
@@ -154,11 +208,12 @@ def create_session_with_first(
     """
     rng = random.Random(seed)
     plan = _make_suits_plan(rng, total)
-    first = generate_quiz_hand(rng, n_suits=plan[0])
+    first = generate_quiz_hand(rng, n_suits=plan[0], endgame=endgame)
     sess = QuizSession(
         questions=[first],
         total_expected=total,
         suits_plan=plan,
+        endgame=endgame,
     )
     return sess, rng
 
@@ -173,22 +228,23 @@ def generate_remaining(sess: QuizSession, rng: random.Random, n: int = 9) -> Non
         for i in range(n):
             idx = start_idx + i
             n_suits = sess.suits_plan[idx] if idx < len(sess.suits_plan) else 2
-            q = generate_quiz_hand(rng, n_suits=n_suits)
+            q = generate_quiz_hand(rng, n_suits=n_suits, endgame=sess.endgame)
             sess.append_question(q)
         sess.mark_generation_done()
     except Exception as exc:
         sess.mark_generation_error(str(exc))
 
 
-def create_session(n_questions: int = 10, seed: int | None = None) -> QuizSession:
+def create_session(n_questions: int = 10, seed: int | None = None, endgame: bool = False) -> QuizSession:
     """同步生成全部题目（供测试 / CLI 使用）。"""
     rng = random.Random(seed)
     plan = _make_suits_plan(rng, n_questions)
-    questions = [generate_quiz_hand(rng, n_suits=plan[i]) for i in range(n_questions)]
+    questions = [generate_quiz_hand(rng, n_suits=plan[i], endgame=endgame) for i in range(n_questions)]
     sess = QuizSession(
         questions=questions,
         total_expected=n_questions,
         generation_done=True,
         suits_plan=plan,
+        endgame=endgame,
     )
     return sess

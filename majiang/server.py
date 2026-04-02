@@ -38,14 +38,14 @@ _connections: dict[str, dict[str, WebSocket]] = {}
 #  任意实例均可从 token 重建 session，无需共享内存。
 # ═══════════════════════════════════════════════════════════════
 
-def _make_sid(seed: int, index: int, answered: int, correct: int) -> str:
-    payload = f"{seed}.{index}.{answered}.{correct}"
+def _make_sid(seed: int, index: int, answered: int, correct: int, endgame: int = 0) -> str:
+    payload = f"{seed}.{index}.{answered}.{correct}.{endgame}"
     sig = hmac.new(_SESSION_SECRET, payload.encode(), hashlib.sha256).hexdigest()[:8]
     return f"{payload}.{sig}"
 
 
-def _parse_sid(sid: str) -> tuple[int, int, int, int] | None:
-    """解码 token，签名不合法返回 None。"""
+def _parse_sid(sid: str) -> tuple[int, int, int, int, int] | None:
+    """解码 token，签名不合法返回 None。返回 (seed, index, answered, correct, endgame)。"""
     parts = sid.rsplit(".", 1)
     if len(parts) != 2:
         return None
@@ -54,12 +54,18 @@ def _parse_sid(sid: str) -> tuple[int, int, int, int] | None:
     if not hmac.compare_digest(sig, expected):
         return None
     sub = payload.split(".")
-    if len(sub) != 4:
-        return None
-    try:
-        return int(sub[0]), int(sub[1]), int(sub[2]), int(sub[3])
-    except ValueError:
-        return None
+    # 向下兼容旧 4 字段 token（无 endgame）
+    if len(sub) == 4:
+        try:
+            return int(sub[0]), int(sub[1]), int(sub[2]), int(sub[3]), 0
+        except ValueError:
+            return None
+    if len(sub) == 5:
+        try:
+            return int(sub[0]), int(sub[1]), int(sub[2]), int(sub[3]), int(sub[4])
+        except ValueError:
+            return None
+    return None
 
 
 def _get_or_reconstruct(sid: str) -> QuizSession:
@@ -69,8 +75,8 @@ def _get_or_reconstruct(sid: str) -> QuizSession:
     parsed = _parse_sid(sid)
     if parsed is None:
         raise HTTPException(404, {"error": "SESSION_NOT_FOUND", "message": "会话不存在或已过期"})
-    seed, index, answered, correct = parsed
-    sess = create_session(seed=seed)          # 同步生成全部 10 题（确定性）
+    seed, index, answered, correct, endgame = parsed
+    sess = create_session(seed=seed, endgame=bool(endgame))
     sess.seed = seed
     sess.session_id = sid
     sess.current_index = index
@@ -86,6 +92,7 @@ def _get_or_reconstruct(sid: str) -> QuizSession:
 
 class NewSessionReq(BaseModel):
     seed: int | None = None
+    endgame: bool = False
 
 class AnswerReq(BaseModel):
     discard: str
@@ -103,13 +110,13 @@ def _structure_dict(s) -> dict | None:
 
 def _opt_dict(opt, hand_13: list[Tile] | None = None) -> dict:
     d = {
-        "discard":      str(opt.discard),
-        "tenpai_tiles": [str(t) for t in opt.tenpai_tiles],
-        "tenpai_count": opt.tenpai_count,
+        "discard":          str(opt.discard),
+        "tenpai_tiles":     [str(t) for t in opt.tenpai_tiles],
+        "tenpai_count":     opt.tenpai_count,
+        "effective_count":  opt.effective_count,
     }
     if opt.structure:
         d["structure"] = _structure_dict(opt.structure)
-    # 每张听牌的独立牌谱（前端用于逐牌说明）
     if hand_13 is not None:
         d["tile_structures"] = {
             str(t): _structure_dict(find_structure_for_tile(hand_13, t))
@@ -126,9 +133,9 @@ async def new_session(req: NewSessionReq = NewSessionReq(),
     冷启动时可从 token 重建 session，无需外部存储。
     """
     seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
-    sess, rng = create_session_with_first(seed=seed, total=10)
+    sess, rng = create_session_with_first(seed=seed, total=10, endgame=req.endgame)
     sess.seed = seed
-    sid = _make_sid(seed, 0, 0, 0)
+    sid = _make_sid(seed, 0, 0, 0, int(req.endgame))
     sess.session_id = sid
     _sessions[sid] = sess
 
@@ -139,15 +146,20 @@ async def new_session(req: NewSessionReq = NewSessionReq(),
     background_tasks.add_task(_fill)
 
     first_q = sess.questions[0]
+    first_q_resp: dict = {
+        "index": 0,
+        "total": sess.total_expected,
+        "hand":  [str(t) for t in first_q.hand],
+    }
+    if req.endgame and first_q.remaining_tiles is not None:
+        first_q_resp["remaining_tiles"] = first_q.remaining_tiles
+
     return {
         "session_id":    sid,
         "total_expected": sess.total_expected,
         "current_index": 0,
-        "first_question": {
-            "index": 0,
-            "total": sess.total_expected,
-            "hand":  [str(t) for t in first_q.hand],
-        },
+        "endgame":       req.endgame,
+        "first_question": first_q_resp,
     }
 
 
@@ -180,12 +192,16 @@ def current_question(sid: str):
                                    "message": "题目生成中，请稍后重试",
                                    "retry_after_ms": 200})
     q = sess.current_question()
-    return {
+    resp: dict = {
         "session_id": sid,
         "index":      sess.current_index,
         "total":      sess.total_expected,
         "hand":       [str(t) for t in q.hand],
+        "endgame":    sess.endgame,
     }
+    if sess.endgame and q.remaining_tiles is not None:
+        resp["remaining_tiles"] = q.remaining_tiles
+    return resp
 
 
 @app.post("/quiz/sessions/{sid}/answer")
@@ -215,7 +231,7 @@ def submit_answer(sid: str, req: AnswerReq):
     result = sess.submit_answer(discard_tile)
 
     # 更新 session_id（携带最新状态），前端需用新 id 发起后续请求
-    new_sid = _make_sid(sess.seed, sess.current_index, sess.answered, sess.correct_count)
+    new_sid = _make_sid(sess.seed, sess.current_index, sess.answered, sess.correct_count, int(sess.endgame))
     sess.session_id = new_sid
     _sessions[new_sid] = sess
     _sessions.pop(sid, None)
@@ -227,10 +243,13 @@ def submit_answer(sid: str, req: AnswerReq):
         return h
 
     return {
-        "correct":      result.correct,
-        "your_choice":  _opt_dict(result.your_choice,  _hand13(result.your_choice.discard)),
-        "best_options": [_opt_dict(o, _hand13(o.discard)) for o in result.best_options],
-        "max_tenpai":   result.max_tenpai,
+        "correct":         result.correct,
+        "your_choice":     _opt_dict(result.your_choice,  _hand13(result.your_choice.discard)),
+        "best_options":    [_opt_dict(o, _hand13(o.discard)) for o in result.best_options],
+        "max_tenpai":      result.max_tenpai,
+        "max_effective":   q.max_effective,
+        "endgame":         sess.endgame,
+        "remaining_tiles": q.remaining_tiles if sess.endgame else None,
         "next_session_id": new_sid,
         "session_progress": {
             "answered": sess.answered,

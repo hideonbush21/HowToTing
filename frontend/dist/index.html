@@ -106,6 +106,87 @@ body::after {
   font-family: 'Noto Serif SC', serif;
 }
 
+/* ─── Endgame toggle ────────────────────────────────────────── */
+.endgame-toggle {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; user-select: none;
+}
+
+.toggle-label {
+  font-size: 11px; color: var(--t2); letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+.toggle-track {
+  width: 36px; height: 20px;
+  border-radius: 10px;
+  background: var(--bg3);
+  border: 1px solid rgba(255,255,255,.1);
+  position: relative;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+
+.toggle-track.on {
+  background: rgba(63,176,118,.25);
+  border-color: rgba(63,176,118,.5);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--t2);
+  transition: left .2s, background .2s;
+}
+
+.toggle-track.on .toggle-thumb {
+  left: 18px;
+  background: var(--jade);
+}
+
+.toggle-next-hint {
+  font-size: 10px; color: var(--jade);
+  letter-spacing: .04em;
+}
+
+/* ─── Endgame mode badge on instruction ──────────────────────── */
+.endgame-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(63,176,118,.12);
+  border: 1px solid rgba(63,176,118,.3);
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 11px; color: var(--jade);
+  letter-spacing: .08em;
+  margin-left: 10px;
+}
+
+/* ─── Remaining count badge on wait chips ────────────────────── */
+.wait-chip-wrap {
+  position: relative; display: inline-block;
+}
+
+.remain-badge {
+  position: absolute;
+  bottom: -5px; right: -5px;
+  min-width: 16px; height: 16px;
+  border-radius: 8px;
+  background: var(--jade);
+  color: #000;
+  font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
+  border: 1px solid var(--bg);
+}
+
+.remain-badge.zero {
+  background: var(--red);
+  color: #fff;
+}
+
 /* ─── Main ──────────────────────────────────────────────────── */
 .main {
   flex: 1;
@@ -654,6 +735,10 @@ body::after {
     <span class="logo-sub">听牌练习</span>
   </div>
   <div class="hud">
+    <div class="endgame-toggle" id="endgameToggle" onclick="toggleEndgame()" title="开启后下一把进入残局模式">
+      <span class="toggle-label">残局模式</span>
+      <div class="toggle-track" id="toggleTrack"><div class="toggle-thumb"></div></div>
+    </div>
     <span class="hud-q" id="hudQ">加载中…</span>
     <span class="hud-score" id="hudScore">0 / 0</span>
   </div>
@@ -675,7 +760,25 @@ const S = {
   correct: 0,
   hand: [],
   locked: false,
+  endgame: false,       // current session's endgame state
+  nextEndgame: localStorage.getItem('endgame') === '1',  // pending toggle for next session
+  remaining: null,      // current question's remaining_tiles dict
 };
+
+/* ═══════════════════════════════════════════════════════════════
+   Endgame toggle
+═══════════════════════════════════════════════════════════════ */
+function updateToggleUI() {
+  const track = document.getElementById('toggleTrack');
+  if (!track) return;
+  track.classList.toggle('on', S.nextEndgame);
+}
+
+function toggleEndgame() {
+  S.nextEndgame = !S.nextEndgame;
+  localStorage.setItem('endgame', S.nextEndgame ? '1' : '0');
+  updateToggleUI();
+}
 
 /* ═══════════════════════════════════════════════════════════════
    Tile helpers
@@ -799,8 +902,11 @@ function renderQuestion() {
   const app = document.getElementById('app');
   setHud();
 
+  const endgameBadge = S.endgame
+    ? `<span class="endgame-badge">残局模式</span>` : '';
+
   app.innerHTML = `
-    <p class="instruction">选择一张打出，使听牌种数最多</p>
+    <p class="instruction">选择一张打出，使${S.endgame ? '剩余可摸听牌张数' : '听牌种数'}最多${endgameBadge}</p>
     <div class="tiles-row" id="tilesRow"></div>
     <div class="panel" id="panel"><div class="panel-inner" id="panelInner"></div></div>
     <div class="actions" id="actions"></div>
@@ -860,11 +966,24 @@ async function onTileClick(str, el) {
    Render: Analysis
 ═══════════════════════════════════════════════════════════════ */
 function renderAnalysis(data) {
-  const { correct, your_choice, best_options, max_tenpai } = data;
+  const { correct, your_choice, best_options, max_tenpai, max_effective, endgame, remaining_tiles } = data;
+  const rem = remaining_tiles || S.remaining || {};
   const yc = your_choice;
 
   /* ── Left panel: wait-tiles + per-tile structure ── */
-  let _tileStructures = {};   // 当前选中打法的 tile_structures
+  let _tileStructures = {};
+
+  function waitChipHtml(t, isFirst) {
+    const chip = chipHtml(t);
+    if (!endgame) {
+      return `<span class="wait-selectable${isFirst ? ' active-wait' : ''}" data-wait="${t}"
+                   onclick="selectWaitTile('${t}')">${chip}</span>`;
+    }
+    const count = rem[t] ?? '?';
+    const zeroClass = count === 0 ? ' zero' : '';
+    return `<span class="wait-selectable${isFirst ? ' active-wait' : ''}" data-wait="${t}"
+                 onclick="selectWaitTile('${t}')"><span class="wait-chip-wrap">${chip}<span class="remain-badge${zeroClass}">${count}</span></span></span>`;
+  }
 
   function leftHtml(opt) {
     if (opt.tenpai_count === 0) {
@@ -872,13 +991,13 @@ function renderAnalysis(data) {
     }
     _tileStructures = opt.tile_structures || {};
     const firstTile = opt.tenpai_tiles[0];
-    const chipsHtml = opt.tenpai_tiles.map((t, i) =>
-      `<span class="wait-selectable${i === 0 ? ' active-wait' : ''}" data-wait="${t}"
-             onclick="selectWaitTile('${t}')">${chipHtml(t)}</span>`
-    ).join('');
+    const chipsHtml = opt.tenpai_tiles.map((t, i) => waitChipHtml(t, i === 0)).join('');
+    const countLabel = endgame
+      ? `<span class="n">${opt.effective_count}</span> 张可摸&nbsp;<span style="color:var(--t3);font-size:11px">（${opt.tenpai_count} 种）</span>`
+      : `<span class="n">${opt.tenpai_count}</span> 种可胡`;
     return `
       <div class="tile-chips">${chipsHtml}</div>
-      <div class="chips-count"><span class="n">${opt.tenpai_count}</span> 种可胡</div>
+      <div class="chips-count">${countLabel}</div>
       <div id="waitStructure">${structureHtml(_tileStructures[firstTile] || null)}</div>`;
   }
 
@@ -891,22 +1010,32 @@ function renderAnalysis(data) {
   };
 
   /* ── Right panel: best-option rows ── */
-  const notOptimalNote = !correct ? `
-    <p style="font-size:11px;color:var(--t3);margin-top:10px;letter-spacing:.04em">
-      你的打法听 ${yc.tenpai_count} 种，最优听 ${max_tenpai} 种
-    </p>` : '';
+  const notOptimalNote = !correct ? (endgame
+    ? `<p style="font-size:11px;color:var(--t3);margin-top:10px;letter-spacing:.04em">
+        你的打法剩余 ${yc.effective_count} 张，最优剩余 ${max_effective} 张
+       </p>`
+    : `<p style="font-size:11px;color:var(--t3);margin-top:10px;letter-spacing:.04em">
+        你的打法听 ${yc.tenpai_count} 种，最优听 ${max_tenpai} 种
+       </p>`) : '';
 
   const bestHtml = best_options.map((opt, idx) => {
     const isYou = opt.discard === yc.discard;
+    const countDisplay = endgame
+      ? `剩余 <b>${opt.effective_count}</b> 张`
+      : `听 <b>${opt.tenpai_count}</b> 种`;
     return `
       <div class="best-row ${isYou ? 'is-you' : ''}" data-idx="${idx}">
         <div class="best-dot"></div>
         <div class="best-tile-img">${tileImgTag(opt.discard)}</div>
         <div class="best-tile ${isYou ? 'is-you' : ''}">打 ${opt.discard}</div>
         ${isYou ? '<span class="best-you-label">你的选择</span>' : ''}
-        <div class="best-count">听 <b>${opt.tenpai_count}</b> 种</div>
+        <div class="best-count">${countDisplay}</div>
       </div>`;
   }).join('');
+
+  const bestLabel = endgame
+    ? `最优打法（剩余 ${max_effective} 张）`
+    : `最优打法（听 ${max_tenpai} 种）`;
 
   document.getElementById('panelInner').innerHTML = `
     <div class="panel-verdict">
@@ -915,7 +1044,9 @@ function renderAnalysis(data) {
       </span>
       <div class="verdict-tile">${tileImgTag(yc.discard)}</div>
       <span class="verdict-desc">
-        打出 <b>${yc.discard}</b>，可听 <b>${yc.tenpai_count}</b> 种牌
+        打出 <b>${yc.discard}</b>，${endgame
+          ? `可摸 <b>${yc.effective_count}</b> 张（听 <b>${yc.tenpai_count}</b> 种）`
+          : `可听 <b>${yc.tenpai_count}</b> 种牌`}
       </span>
     </div>
     <div class="panel-body">
@@ -924,7 +1055,7 @@ function renderAnalysis(data) {
         <div id="leftContent">${leftHtml(yc)}</div>
       </div>
       <div class="panel-col">
-        <div class="col-label">最优打法（听 ${max_tenpai} 种）</div>
+        <div class="col-label">${bestLabel}</div>
         ${bestHtml}
         ${notOptimalNote}
       </div>
@@ -933,7 +1064,6 @@ function renderAnalysis(data) {
 
   /* ── Wire up row clicks ── */
   const rows = document.querySelectorAll('.best-row');
-  // Default active: user's row (or first)
   const defaultIdx = best_options.findIndex(o => o.discard === yc.discard);
   if (defaultIdx >= 0) rows[defaultIdx]?.classList.add('active');
 
@@ -980,6 +1110,8 @@ async function nextQuestion() {
       const q = await get(`/quiz/sessions/${S.sid}/current`);
       S.hand = q.hand;
       S.idx  = q.index;
+      S.remaining = q.remaining_tiles || null;
+      S.endgame = q.endgame || false;
       renderQuestion();
       return;
     } catch (e) {
@@ -1038,15 +1170,19 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function init() {
   S.sid = null; S.idx = 0; S.answered = 0; S.correct = 0; S.locked = false;
+  S.remaining = null;
+  S.endgame = S.nextEndgame;
   setHud();
+  updateToggleUI();
   renderLoading();
   try {
-    const sess = await post('/quiz/sessions', {});
+    const sess = await post('/quiz/sessions', { endgame: S.endgame });
     S.sid   = sess.session_id;
     S.total = sess.total_expected;
 
     const fq = sess.first_question;
     S.hand = fq.hand;
+    S.remaining = fq.remaining_tiles || null;
     S.idx  = fq.index;
     renderQuestion();
     setHud();
@@ -1055,6 +1191,7 @@ async function init() {
   }
 }
 
+updateToggleUI();
 init();
 </script>
 </body>
