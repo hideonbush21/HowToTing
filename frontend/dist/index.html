@@ -691,8 +691,16 @@ function tileImgUrl(str) {
 }
 
 function tileImgTag(str, cls = '') {
-  return `<img src="${tileImgUrl(str)}" alt="${str}" loading="lazy"${cls ? ` class="${cls}"` : ''}>`;
+  return `<img src="${tileImgUrl(str)}" alt="${str}"${cls ? ` class="${cls}"` : ''}>`;
 }
+
+(function preloadTiles() {
+  ['万', '条', '饼'].forEach(suit => {
+    for (let n = 1; n <= 9; n++) {
+      new Image().src = tileImgUrl(`${n}${suit}`);
+    }
+  });
+})();
 
 function chipHtml(tileStr) {
   return `<div class="tile-chip" title="${tileStr}">${tileImgTag(tileStr)}</div>`;
