@@ -300,7 +300,7 @@ def find_structure_for_tile(hand: list[Tile], wait_tile: Tile) -> TenpaiStructur
             wait_type='七对',
         )
 
-    # ── 标准型：枚举雀头 → wait_part 必须含 wait_tile 且加上 wait_tile 能成面子 ──
+    # ── 标准型：枚举雀头 → wait_part + wait_tile 能成面子即可（wait_tile 不必在手牌中）──
     for pair_tile in sorted(set(hand), key=key):
         if counts[pair_tile] < 2:
             continue
@@ -315,8 +315,6 @@ def find_structure_for_tile(hand: list[Tile], wait_tile: Tile) -> TenpaiStructur
                 if wp in seen_wp:
                     continue
                 seen_wp.add(wp)
-                if wait_tile not in wp:
-                    continue
                 # wait_part + wait_tile 必须构成一个面子
                 if not _can_form_one_meld(sorted(list(wp) + [wait_tile])):
                     continue
